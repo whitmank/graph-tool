@@ -16,26 +16,52 @@ GraphTool is a browser-based application that lets you create, visualize, and ex
 
 ## Quick Start
 
+### Prerequisites
+Install SurrealDB on your system:
+```bash
+# macOS
+brew install surrealdb/tap/surreal
+
+# Linux
+curl -sSf https://install.surrealdb.com | sh
+
+# Windows
+iwr https://install.surrealdb.com -useb | iex
+```
+
+### Running GraphTool
+
 ```bash
 # Install dependencies
 npm install
 
-# Start development server
-npm run dev
+# Option 1: Start backend server (recommended)
+npm start
+# Opens http://localhost:3000 (serves both API + frontend)
 
-# Build for production
-npm run build
+# Option 2: Development mode (frontend only)
+npm run dev
+# Note: Requires backend running separately via `npm run dev:server`
 ```
 
-Visit `http://localhost:5173` and start creating your graph!
+### Testing the API
+```bash
+# Create a node
+curl -X POST http://localhost:3000/api/nodes \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Test Node","url":"https://example.com"}'
+
+# Get all nodes
+curl http://localhost:3000/api/nodes
+```
 
 ## Tech Stack
 
-- **Frontend**: React 19
+- **Frontend**: React 19 + Vite 7
 - **Visualization**: D3.js v7 (force simulation)
-- **Database**: sql.js (SQLite WASM)
-- **Storage**: IndexedDB via localforage
-- **Build Tool**: Vite 7
+- **Backend**: Node.js + Express 5
+- **Database**: SurrealDB 1.3+ (multi-model document database)
+- **Architecture**: Client-Server (REST API)
 
 ## Documentation
 
@@ -64,9 +90,15 @@ graphtool_0.1/
 ```
 
 **Module Dependencies**:
-- **Modules A & B**: Fully standalone, no dependencies
-- **Module D**: Integrates all modules (orchestration layer)
+- **Module A (Database)**: Backend is standalone, frontend consumes via HTTP REST API
+- **Module B (Physics)**: Fully standalone (client-side D3.js)
+- **Module D (State)**: Integrates all modules (orchestration layer)
 - **Modules C & E**: Depend on Module D for state
+
+**Architecture**: Client-Server
+- Backend exposes `/api/nodes` and `/api/links` endpoints
+- Frontend React app consumes REST API
+- SurrealDB runs as child process managed by backend
 
 See [MODULES.md](./docs/MODULES.md) for detailed module specifications.
 
@@ -75,19 +107,32 @@ See [MODULES.md](./docs/MODULES.md) for detailed module specifications.
 See [SETUP.md](./docs/SETUP.md) for complete development environment setup.
 
 ```bash
-npm run dev      # Start dev server
-npm run build    # Production build
-npm run preview  # Preview production build
-npm run lint     # Run ESLint
+# Frontend development
+npm run dev         # Vite dev server (port 5173)
+
+# Backend development
+npm run dev:server  # Start Express + SurrealDB server (port 3000)
+
+# Production
+npm run build       # Build frontend to /dist
+npm start           # Start production server (serves /dist + API)
+
+# Code quality
+npm run lint        # Run ESLint
 ```
 
-## Browser Support
+## System Requirements
 
-- Chrome/Edge 57+
-- Firefox 52+
-- Safari 11+
+**Backend**:
+- Node.js 18+
+- SurrealDB 1.3+ (installed globally)
 
-Requires WebAssembly and IndexedDB support.
+**Frontend** (Browser):
+- Chrome/Link 90+
+- Firefox 88+
+- Safari 14+
+
+**Storage**: File-based (data persists to `data/graphtool.db/`)
 
 ## License
 

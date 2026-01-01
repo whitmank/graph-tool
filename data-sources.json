@@ -1,0 +1,10 @@
+{
+  "current": "default",
+  "sources": {
+    "default": {
+      "name": "Default (Project Files)",
+      "path": "./files",
+      "description": "Default data storage in project folder"
+    }
+  }
+}

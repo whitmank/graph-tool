@@ -1,35 +1,67 @@
 # Architecture
 
 ## System Overview
-GraphTool separates concerns into four distinct layers that communicate through a unidirectional data flow.
+GraphTool uses a **client-server architecture** with clear separation of concerns. The backend manages data persistence with SurrealDB, while the frontend handles visualization and user interaction.
 
 ## Data Flow
+
 ```
-┌─────────────┐
-│   User UI   │ ← User interactions (click, drag, type)
-└──────┬──────┘
-       ↓
-┌─────────────┐
-│React State  │ ← Dispatch actions (ADD_NODE, DELETE_EDGE, etc.)
-│  (Context)  │
-└──────┬──────┘
-       ↓
-    ┌──┴───┐
-    ↓      ↓
-┌────────┐ ┌──────────┐
-│SQLite  │ │D3 Engine │ ← Parallel updates
-│Database│ │Simulation│
-└────────┘ └─────┬────┘
-    ↑            ↓
-    │      ┌──────────┐
-    │      │Position  │
-    │      │Updates   │
-    │      └─────┬────┘
-    │            ↓
-    │      ┌──────────┐
-    └──────│React     │ ← Re-render with new positions
-           │Render    │
-           └──────────┘
+┌──────────────── CLIENT (Browser) ────────────────┐
+│                                                    │
+│  ┌─────────────┐                                 │
+│  │   User UI   │ ← User interactions              │
+│  └──────┬──────┘                                 │
+│         ↓                                         │
+│  ┌─────────────┐                                 │
+│  │React State  │ ← Dispatch actions               │
+│  │  (Context)  │                                 │
+│  └──────┬──────┘                                 │
+│         ↓                                         │
+│      ┌──┴───┐                                    │
+│      ↓      ↓                                     │
+│  ┌────────┐ ┌──────────┐                        │
+│  │API     │ │D3 Engine │ ← Local physics         │
+│  │Client  │ │Simulation│                         │
+│  └────┬───┘ └─────┬────┘                        │
+│       │           ↓                               │
+│       │     ┌──────────┐                         │
+│       │     │Position  │                         │
+│       │     │Updates   │                         │
+│       │     └─────┬────┘                         │
+│       │           ↓                               │
+│       │     ┌──────────┐                         │
+│       │     │React     │ ← Re-render              │
+│       │     │Render    │                         │
+│       │     └──────────┘                         │
+│       │                                           │
+└───────┼───────────────────────────────────────────┘
+        │
+        │ HTTP REST API
+        │ (JSON)
+        ↓
+┌──────────────── SERVER (Node.js) ────────────────┐
+│                                                    │
+│  ┌─────────────┐                                 │
+│  │  Express    │ ← API Routes + WebSocket         │
+│  │  Server     │   /api/nodes, /api/links         │
+│  └──────┬──────┘   /api/data-sources             │
+│         ↓                                         │
+│  ┌─────────────┐                                 │
+│  │ db-service  │ ← CRUD operations                │
+│  └──────┬──────┘                                 │
+│         ↓      ↘                                  │
+│  ┌─────────────┐ ┌──────────────┐               │
+│  │ SurrealDB   │ │ file-service │ ← File I/O    │
+│  │ (ephemeral  │ │ (persistence)│   Watchers     │
+│  │  cache)     │ └──────┬───────┘               │
+│  └─────────────┘        ↓                        │
+│                   ┌──────────────┐               │
+│                   │  JSON Files  │ ← Source of   │
+│                   │files/nodes/  │   Truth       │
+│                   │files/links/  │               │
+│                   └──────────────┘               │
+│                                                    │
+└────────────────────────────────────────────────────┘
 ```
 
 ## Core Principle: React for Rendering, D3 for Math
@@ -50,27 +82,33 @@ Both React and D3 want to control the DOM:
 The system is organized into **five independent modules** (A-E) with clear separation of concerns. Each module can be developed, tested, and modified independently as long as its external interface contract is maintained.
 
 ### Module A: Database (Persistence Layer)
-**Location**: `/src/database/`
+**Location**: `/db-service.js` (backend) + HTTP API
 
-**Responsibility**: Persistent storage of graph structure
+**Responsibility**: Persistent storage of graph structure via SurrealDB
 
-**Dependencies**: None (standalone)
+**Dependencies**: SurrealDB server process, Express.js
 
 **Key Files**:
-- `db.js` - sql.js initialization, IndexedDB persistence
-- `schema.js` - Table definitions (nodes, edges)
-- `queries.js` - CRUD operations
+- `server.js` - Express API server, manages SurrealDB process
+- `db-service.js` - SurrealDB client wrapper with CRUD operations
+- `data/` - File-based SurrealDB storage directory
 
 **External Interface**:
 ```javascript
-// Consumed by: Module D (State Management)
+// Backend (db-service.js):
 getAllNodes() → [{id, label, url, x, y}, ...]
 createNode({label, url}) → nodeId
 deleteNode(id) → void
+
+// Frontend consumes via HTTP REST API:
+GET    /api/nodes
+POST   /api/nodes
+PUT    /api/nodes/:id
+DELETE /api/nodes/:id
 // See DATABASE.md for complete API
 ```
 
-**Module Independence**: Can be developed and tested standalone. Replace IndexedDB with localStorage or remote API without affecting other modules.
+**Module Independence**: Backend is standalone. Can replace SurrealDB with PostgreSQL, MongoDB, or any database without changing frontend API contract.
 
 ---
 
@@ -88,7 +126,7 @@ deleteNode(id) → void
 **External Interface**:
 ```javascript
 // Consumed by: Module C (Rendering), Module D (State)
-createSimulation(nodes, edges, width, height) → Simulation
+createSimulation(nodes, links, width, height) → Simulation
 addNode(simulation, node) → void
 removeNode(simulation, nodeId) → void
 ```
@@ -145,7 +183,7 @@ const { state, dispatch } = useContext(GraphContext);
 
 // State shape
 {
-  graph: { nodes: [], edges: [] },
+  graph: { nodes: [], links: [] },
   ui: { selectedNode: null, selectedEdge: null },
   simulation: SimulationRef
 }
@@ -166,7 +204,7 @@ const { state, dispatch } = useContext(GraphContext);
 - `App.jsx` - Root layout component
 - `Toolbar.jsx` - Add node/edge buttons
 - `NodeForm.jsx` - Create/edit modal
-- `EdgeForm.jsx` - Create edge modal
+- `EdgeForm.jsx` - Create link modal
 - `ContextMenu.jsx` - Right-click actions
 
 **External Interface**:
@@ -183,7 +221,7 @@ dispatch({ type: 'ADD_NODE', payload: { label, url } })
 
 **Why not Redux/Zustand?**
 - Minimal dependencies
-- Graph state is simple (nodes array, edges array)
+- Graph state is simple (nodes array, links array)
 - No complex async logic
 
 **State Structure**:
@@ -191,13 +229,13 @@ dispatch({ type: 'ADD_NODE', payload: { label, url } })
 {
   graph: {
     nodes: [{id, label, url, x, y}, ...],
-    edges: [{id, source, target, label}, ...]
+    links: [{id, source, target, label}, ...]
   },
   ui: {
     selectedNode: id | null,
     selectedEdge: id | null,
     isAddingEdge: false,
-    edgeSourceNode: id | null
+    linkSourceNode: id | null
   },
   simulation: d3.forceSimulation() // Reference to D3 instance
 }
@@ -261,35 +299,74 @@ function handleDragEnd(node) {
 
 ## Persistence Strategy
 
-**Auto-save on Change**:
-```javascript
-// Debounced write to IndexedDB
-const saveDB = debounce(() => {
-  const data = db.export();
-  indexedDB.put('graphtool_db', data);
-}, 500);
+### File-Based Architecture
 
-// Called after every mutation
-dispatch({ type: 'ADD_NODE', ... }).then(saveDB);
-```
+**Primary Storage**: JSON files (source of truth)
+- **Location**: `files/nodes/` and `files/links/` directories
+- **Format**: One JSON file per node/link
+- **Benefits**: Human-readable, version-controllable, directly editable
+
+**Cache Layer**: SurrealDB 2.x (ephemeral, in-memory)
+- **Purpose**: Fast querying, relationship traversal
+- **Lifecycle**: Populated from files on startup, cleared on shutdown
+- **No persistence**: Database is rebuild from files each time
+
+### Data Flow
+
+**On Server Startup**:
+1. Load all JSON files from `files/` directory
+2. Validate and parse JSON
+3. Populate SurrealDB cache
+4. Start file watchers (chokidar)
+5. Start WebSocket for real-time updates
+
+**On Client Request (Create/Update)**:
+1. Client → HTTP POST/PUT → Express server
+2. Express → db-service → SurrealDB (fast write)
+3. db-service → file-service → JSON file (durable write)
+4. file-service → WebSocket broadcast (all clients notified)
+
+**On External File Change** (user edits file manually):
+1. File watcher detects change
+2. Update SurrealDB cache
+3. WebSocket broadcast to all clients
+4. Clients reload data from API
 
 **Load on Mount**:
 ```javascript
 // App.jsx
 useEffect(() => {
-  indexedDB.get('graphtool_db').then(data => {
-    if (data) {
-      db.import(data);
-      dispatch({ type: 'LOAD_GRAPH', payload: db.getAllNodes() });
-    }
-  });
+  fetch('/api/nodes')
+    .then(res => res.json())
+    .then(nodes => {
+      dispatch({ type: 'LOAD_GRAPH', payload: nodes });
+    });
+
+  // WebSocket for real-time updates
+  const ws = new WebSocket('ws://localhost:3000');
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === 'node') loadNodes();
+    if (message.type === 'link') loadLinks();
+  };
 }, []);
 ```
+
+### Data Source Management
+
+**Multi-Source Support**: Switch between different data directories without server restart
+- Default: `./files/`
+- External: e.g., `/Volumes/External/graphtool-data/`
+- Configured in `data-sources.json`
+
+**Hot Reload**: Switching sources clears cache, loads new files, restarts watchers
+
+See [DATABASE.md](DATABASE.md) for detailed persistence architecture and API reference.
 
 ## Performance Considerations
 
 1. **React Rendering**:
-   - Use `React.memo` for Node/Edge components
+   - Use `React.memo` for Node/Link components
    - Stable keys (node.id) prevent unnecessary re-renders
    - Consider throttling tick updates for large graphs (>500 nodes)
 
@@ -321,10 +398,13 @@ simulation.force("custom", () => {
 {node.type === 'image' ? <NodeImage /> : <NodeCircle />}
 ```
 
-**Alternative Persistence**:
+**Alternative Backends**:
 ```javascript
-// Replace IndexedDB with localStorage or remote API
-// Interface remains the same: save(data), load() → data
+// Backend abstraction allows swapping databases:
+// - Replace SurrealDB with PostgreSQL
+// - Replace SurrealDB with MongoDB
+// - Replace SurrealDB with SQLite
+// Frontend API contract remains unchanged
 ```
 
 ---
@@ -411,23 +491,23 @@ async function saveDatabase() {
 
 **Prevent Invalid States:**
 ```javascript
-export function addEdge(simulation, edge) {
+export function addEdge(simulation, link) {
   // Validate before adding
   if (!edge.source || !edge.target) {
-    throw new Error('Edge must have source and target');
+    throw new Error('Link must have source and target');
   }
 
   const nodes = simulation.nodes();
-  const sourceExists = nodes.find(n => n.id === edge.source);
-  const targetExists = nodes.find(n => n.id === edge.target);
+  const sourceExists = nodes.find(n => n.id === link.source);
+  const targetExists = nodes.find(n => n.id === link.target);
 
   if (!sourceExists || !targetExists) {
-    throw new Error('Cannot add edge: node not found');
+    throw new Error('Cannot add link: node not found');
   }
 
   // Safe to proceed
   const linkForce = simulation.force("link");
-  linkForce.links([...linkForce.links(), edge]);
+  linkForce.links([...linkForce.links(), link]);
 }
 ```
 

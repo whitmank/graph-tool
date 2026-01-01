@@ -4,7 +4,13 @@
       "Bash(npm install)",
       "Bash(npm install:*)",
       "Bash(tree:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(npm run dev:backend:*)",
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash({} ;)",
+      "Bash(grep:*)"
     ]
   }
 }

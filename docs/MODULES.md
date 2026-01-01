@@ -64,29 +64,218 @@ E (UI Shell) ←───────────┘
 
 ## Module A: Database (Persistence Layer)
 
-**Module Independence**: ⭐⭐⭐⭐⭐ Fully standalone - no dependencies on other modules
+**Module Independence**: ⭐⭐⭐⭐ High - Backend is standalone, frontend consumes via HTTP
 
-**Can be developed with**: Mock data, standalone tests, browser console
+**Can be developed with**: cURL for testing API, Postman, or Thunder Client
 
-**Alternative implementations**: Replace IndexedDB with localStorage, remote API, or file system
+**Alternative implementations**: Replace SurrealDB with PostgreSQL, MongoDB, MySQL, or any database - frontend API contract remains unchanged
+
+**Architecture**: Client-Server (Backend: Node.js + SurrealDB, Frontend: REST API consumer)
 
 ---
 
-### `database/db.js`
-**Purpose**: Initialize sql.js and manage database connection
+### `db-service.js` (Backend)
+**Purpose**: SurrealDB client wrapper with CRUD operations
+
+**Location**: Root directory (`/db-service.js`)
 
 **Exports**:
 ```javascript
-initDatabase() → Promise<Database>
-getDatabase() → Database
-saveDatabase() → Promise<void>
+// Connection
+connect() → Promise<boolean>
+disconnect() → Promise<void>
+
+// Node operations
+getAllNodes() → Promise<Node[]>
+getNode(id) → Promise<Node | null>
+createNode(data) → Promise<Node>
+updateNode(id, data) → Promise<Node>
+deleteNode(id) → Promise<{success, id}>
+
+// Link operations
+getAllLinks() → Promise<Link[]>
+getLink(id) → Promise<Link | null>
+createLink(data) → Promise<Link>
+updateLink(id, data) → Promise<Link>
+deleteLink(id) → Promise<{success, id}>
+getNodeLinks(nodeId) → Promise<Link[]>
 ```
 
 **Implementation**:
-- Load sql.js WASM module
-- Check IndexedDB for existing database
-- Create new DB if none exists
-- Auto-save on mutations (debounced)
+- Connect to SurrealDB via surrealdb.js client library
+- Execute SurrealQL queries
+- Handle document-based data model
+- Implement cascade deletes at application level
+
+---
+
+### `server.js` (Backend)
+**Purpose**: Express API server and SurrealDB process manager
+
+**Location**: Root directory (`/server.js`)
+
+**Responsibilities**:
+- Spawn and manage SurrealDB child process
+- Expose REST API endpoints (`/api/nodes`, `/api/links`)
+- Serve built Vite frontend (from `/dist`)
+- Handle graceful shutdown
+
+**API Endpoints**:
+```
+Health & Status:
+  GET  /health
+  GET  /api/status
+
+Nodes:
+  GET    /api/nodes
+  GET    /api/nodes/:id
+  POST   /api/nodes
+  PUT    /api/nodes/:id
+  DELETE /api/nodes/:id
+
+Links:
+  GET    /api/links
+  GET    /api/links/:id
+  POST   /api/links
+  PUT    /api/links/:id
+  DELETE /api/links/:id
+  GET    /api/nodes/:id/links
+
+Data Sources:
+  GET    /api/data-sources
+  GET    /api/data-sources/current
+  POST   /api/data-sources
+  PUT    /api/data-sources/switch/:id
+  DELETE /api/data-sources/:id
+```
+
+**Startup Process**:
+1. Ensure directory structure (`files/nodes/`, `files/links/`)
+2. Start SurrealDB as child process (ephemeral, in-memory)
+3. Connect db-service to SurrealDB
+4. Load JSON files and populate SurrealDB cache
+5. Start file watchers (chokidar)
+6. Start Express server on port 3000 with WebSocket support
+7. Serve frontend and API
+
+---
+
+### `file-service.js` (Backend)
+**Purpose**: File I/O operations, atomic writes, and file watching
+
+**Location**: Root directory (`/file-service.js`)
+
+**Exports**:
+```javascript
+// Initialization
+setDbService(service) → void
+ensureDirectories() → Promise<void>
+
+// File operations
+saveNode(node) → Promise<void>
+saveLink(link) → Promise<void>
+deleteNodeFile(id) → Promise<void>
+deleteLinkFile(id) → Promise<void>
+
+// Startup loading
+loadAllFiles() → Promise<{nodes, links, errors}>
+
+// File watchers
+startWatchers() → void
+stopWatchers() → void
+reloadWatchers() → Promise<void>
+
+// Data source management
+updateDataSourcePaths(newSourcePath) → void
+getCurrentPaths() → {filesDir, nodesDir, linksDir}
+```
+
+**Key Features**:
+- **Atomic writes**: Write to `.tmp` file, then rename (prevents corruption)
+- **File watching**: Detect external file changes with chokidar
+- **Loop prevention**: Track own writes to prevent reload loops
+- **Error handling**: Graceful degradation on corrupt files
+- **Cascade deletes**: Delete all link files when node is deleted
+
+**File naming convention**: `{table}_{id-suffix}.json`
+- Example: `nodes:abc123` → `node_abc123.json`
+- Example: `links:xyz789` → `link_xyz789.json`
+
+---
+
+### `data-source-service.js` (Backend)
+**Purpose**: Multi-source data management with hot reload
+
+**Location**: Root directory (`/data-source-service.js`)
+
+**Exports**:
+```javascript
+// Configuration
+getConfig() → Promise<{current, sources}>
+saveConfig(config) → Promise<void>
+
+// Source operations
+getAllSources() → Promise<SourceMap>
+getCurrentSource() → Promise<{id, name, path, description}>
+addSource(id, sourceData) → Promise<Source>
+removeSource(id) → Promise<void>
+
+// Hot reload
+switchSource(newSourceId) → Promise<Source>
+
+// Validation
+validateSourcePath(sourcePath) → Promise<{valid, absolutePath, nodesDir, linksDir, error?}>
+```
+
+**Configuration file**: `data-sources.json`
+```json
+{
+  "current": "default",
+  "sources": {
+    "default": {
+      "name": "Default (Project Files)",
+      "path": "./files",
+      "description": "Default data storage in project folder"
+    }
+  }
+}
+```
+
+**Hot reload process**:
+1. Validate new source path
+2. Stop file watchers
+3. Clear SurrealDB cache
+4. Update file-service paths
+5. Load files from new source
+6. Restart file watchers
+7. Broadcast WebSocket update
+
+---
+
+### Frontend API Client (to be implemented)
+**Purpose**: HTTP client wrapper for REST API calls
+
+**Location**: `src/api/client.js` (frontend)
+
+**Interface**:
+```javascript
+// Will be consumed by Module D (State Management)
+export async function fetchAllNodes() {
+  const response = await fetch('/api/nodes');
+  return response.json();
+}
+
+export async function createNode(data) {
+  const response = await fetch('/api/nodes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return response.json();
+}
+
+// ... more API methods
+```
 
 ---
 
@@ -99,14 +288,14 @@ createSchema(db) → void
 ```
 
 **Implementation**:
-- CREATE TABLE statements for nodes and edges
+- CREATE TABLE statements for nodes and links
 - CREATE INDEX for performance
 - Initial constraints setup
 
 ---
 
 ### `database/queries.js`
-**Purpose**: CRUD operations for nodes and edges
+**Purpose**: CRUD operations for nodes and links
 
 **Exports**:
 ```javascript
@@ -118,14 +307,14 @@ updateNode(id, {label, url, x, y}) → void
 deleteNode(id) → void
 
 // Edges
-getAllEdges() → Edge[]
-getEdge(id) → Edge | null
-createEdge({source_id, target_id, label}) → string (id)
-updateEdge(id, {label}) → void
-deleteEdge(id) → void
+getAllLinks() → Edge[]
+getLink(id) → Link | null
+createLink({source_id, target_id, label}) → string (id)
+updateLink(id, {label}) → void
+deleteLink(id) → void
 
 // Helpers
-getNodeEdges(nodeId) → Edge[]  // All edges connected to node
+getNodeLinks(nodeId) → Edge[]  // All links connected to node
 ```
 
 **Types**:
@@ -165,14 +354,14 @@ getNodeEdges(nodeId) → Edge[]  // All edges connected to node
 
 **Exports**:
 ```javascript
-createSimulation(nodes, edges, width, height) → Simulation
+createSimulation(nodes, links, width, height) → Simulation
 ```
 
 **Implementation**:
 ```javascript
 import * as d3 from 'd3';
 
-export function createSimulation(nodes, edges, width, height) {
+export function createSimulation(nodes, links, width, height) {
   return d3.forceSimulation(nodes)
     .force("link", d3.forceLink(edges)
       .id(d => d.id)
@@ -189,7 +378,7 @@ export function createSimulation(nodes, edges, width, height) {
 ```
 
 **Force Parameters** (tunable):
-- `link.distance`: Edge length (default 100)
+- `link.distance`: Link length (default 100)
 - `charge.strength`: Node repulsion (default -300)
 - `collide.radius`: Collision buffer (default 30)
 
@@ -202,8 +391,8 @@ export function createSimulation(nodes, edges, width, height) {
 ```javascript
 addNode(simulation, node) → void
 removeNode(simulation, nodeId) → void
-addEdge(simulation, edge) → void
-removeEdge(simulation, edgeId) → void
+addEdge(simulation, link) → void
+removeEdge(simulation, linkId) → void
 reheatSimulation(simulation) → void
 ```
 
@@ -255,7 +444,7 @@ import { useContext, useEffect, useRef } from 'react';
 import { GraphContext } from '../store/GraphContext';
 import * as d3 from 'd3';
 import Node from './Node';
-import Edge from './Edge';
+import Link from './Edge';
 
 export default function GraphCanvas() {
   const { state } = useContext(GraphContext);
@@ -276,7 +465,7 @@ export default function GraphCanvas() {
     <svg ref={svgRef} width="100%" height="100vh">
       <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
         {state.graph.edges.map(edge => (
-          <Edge key={edge.id} edge={edge} />
+          <Link key={edge.id} link={edge} />
         ))}
         {state.graph.nodes.map(node => (
           <Node key={node.id} node={node} />
@@ -289,7 +478,7 @@ export default function GraphCanvas() {
 
 **Features**:
 - d3-zoom for pan/zoom
-- Renders edges before nodes (z-index)
+- Renders links before nodes (z-index)
 - Transforms entire graph group
 
 ---
@@ -371,23 +560,23 @@ export default function Node({ node }) {
 ---
 
 ### `components/Edge.jsx`
-**Purpose**: Render edge as SVG line
+**Purpose**: Render link as SVG line
 
 **Props**:
 ```javascript
 {
-  edge: {id, source, target, label}
+  link: {id, source, target, label}
 }
 ```
 
 **Implementation**:
 ```javascript
-export default function Edge({ edge }) {
+export default function Edge({ link }) {
   const { state } = useContext(GraphContext);
 
   // D3 replaces source/target strings with node objects
-  const source = edge.source;
-  const target = edge.target;
+  const source = link.source;
+  const target = link.target;
 
   return (
     <g>
@@ -559,7 +748,7 @@ export default function NodeForm({ onClose, node }) {
 ---
 
 ### `components/ui/EdgeForm.jsx`
-**Purpose**: Modal for creating edges
+**Purpose**: Modal for creating links
 
 **Props**:
 ```javascript
@@ -581,11 +770,48 @@ export default function NodeForm({ onClose, node }) {
 {
   x: number,
   y: number,
-  target: Node | Edge | null
+  target: Node | Link | null
 }
 ```
 
 **Implementation**: Position absolute div at click coordinates with context-specific actions
+
+---
+
+### `src/DevInterface.jsx`
+**Purpose**: Developer CRUD interface for nodes, links, and data sources
+
+**Route**: `/dev` (accessed via React Router)
+
+**Features**:
+- **Nodes view**: Create, read, update, delete nodes
+- **Links view**: Create, read, delete links with source/target selection
+- **Data sources view**: Manage multiple data sources, switch between them
+- **Real-time updates**: WebSocket integration for live data sync
+- **Keyboard navigation**: Arrow keys for data source selection
+- **Form validation**: Required fields, error handling
+
+**State**:
+```javascript
+const [nodes, setNodes] = useState([]);
+const [links, setLinks] = useState([]);
+const [dataSources, setDataSources] = useState([]);
+const [view, setView] = useState('nodes'); // 'nodes', 'links', or 'sources'
+const [nodeFormData, setNodeFormData] = useState({label: '', url: ''});
+const [linkFormData, setLinkFormData] = useState({source_id: '', target_id: '', label: ''});
+```
+
+**API Integration**:
+- Fetches from `/api/nodes`, `/api/links`, `/api/data-sources`
+- WebSocket connection for real-time updates
+- Handles cascade deletes (deleting node deletes connected links)
+- Reloads data after data source switch
+
+**UI Components**:
+- View toggle buttons (Nodes/Links/Sources)
+- CRUD forms for each entity type
+- Data tables with action buttons
+- Status indicators and error messages
 
 ---
 
@@ -644,7 +870,7 @@ export function GraphProvider({ children }) {
 **State Shape**:
 ```javascript
 {
-  graph: { nodes: [], edges: [] },
+  graph: { nodes: [], links: [] },
   ui: { selectedNode: null, selectedEdge: null },
   simulation: null
 }
@@ -655,8 +881,8 @@ export function GraphProvider({ children }) {
 - `ADD_NODE` - Create node in DB and simulation
 - `UPDATE_NODE` - Update label/url
 - `DELETE_NODE` - Remove from DB and simulation
-- `ADD_EDGE` - Create edge
-- `DELETE_EDGE` - Remove edge
+- `ADD_EDGE` - Create link
+- `DELETE_EDGE` - Remove link
 - `SELECT_NODE` - Update selectedNode
 - `UPDATE_POSITIONS` - Simulation tick update
 

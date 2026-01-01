@@ -58,7 +58,7 @@ function createSchema() {
   `);
 
   db.run(`
-    CREATE TABLE edges (
+    CREATE TABLE links (
       id TEXT PRIMARY KEY,
       source_id TEXT NOT NULL,
       target_id TEXT NOT NULL,
@@ -69,8 +69,8 @@ function createSchema() {
     )
   `);
 
-  db.run(`CREATE INDEX idx_edges_source ON edges(source_id)`);
-  db.run(`CREATE INDEX idx_edges_target ON edges(target_id)`);
+  db.run(`CREATE INDEX idx_edges_source ON links(source_id)`);
+  db.run(`CREATE INDEX idx_edges_target ON links(target_id)`);
 }
 
 export function getDatabase() {
@@ -159,9 +159,9 @@ export function deleteNode(id) {
 }
 
 // Edges
-export function getAllEdges() {
+export function getAllLinks() {
   const db = getDatabase();
-  const stmt = db.prepare("SELECT * FROM edges ORDER BY created_at");
+  const stmt = db.prepare("SELECT * FROM links ORDER BY created_at");
   const result = [];
 
   while (stmt.step()) {
@@ -178,12 +178,12 @@ export function getAllEdges() {
   return result;
 }
 
-export function createEdge({ source_id, target_id, label = null }) {
+export function createLink({ source_id, target_id, label = null }) {
   const db = getDatabase();
   const id = crypto.randomUUID();
 
   db.run(
-    "INSERT INTO edges (id, source_id, target_id, label) VALUES (?, ?, ?, ?)",
+    "INSERT INTO links (id, source_id, target_id, label) VALUES (?, ?, ?, ?)",
     [id, source_id, target_id, label]
   );
 
@@ -191,9 +191,9 @@ export function createEdge({ source_id, target_id, label = null }) {
   return id;
 }
 
-export function deleteEdge(id) {
+export function deleteLink(id) {
   const db = getDatabase();
-  db.run("DELETE FROM edges WHERE id = ?", [id]);
+  db.run("DELETE FROM links WHERE id = ?", [id]);
   saveDatabase();
 }
 ```
@@ -235,7 +235,7 @@ Create `src/engine/forceSimulation.js`:
 ```javascript
 import * as d3 from 'd3';
 
-export function createSimulation(nodes, edges, width, height) {
+export function createSimulation(nodes, links, width, height) {
   const simulation = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(edges)
       .id(d => d.id)
@@ -268,9 +268,9 @@ export function removeNodeFromSimulation(simulation, nodeId) {
   const nodes = simulation.nodes().filter(n => n.id !== nodeId);
   simulation.nodes(nodes);
 
-  // Also remove associated edges
+  // Also remove associated links
   const linkForce = simulation.force("link");
-  const edges = linkForce.links().filter(e =>
+  const links = linkForce.links().filter(e =>
     e.source.id !== nodeId && e.target.id !== nodeId
   );
   linkForce.links(edges);
@@ -278,17 +278,17 @@ export function removeNodeFromSimulation(simulation, nodeId) {
   simulation.alpha(0.3).restart();
 }
 
-export function addEdgeToSimulation(simulation, edge) {
+export function addEdgeToSimulation(simulation, link) {
   const linkForce = simulation.force("link");
-  const edges = linkForce.links();
-  edges.push(edge);
+  const links = linkForce.links();
+  links.push(edge);
   linkForce.links(edges);
   simulation.alpha(0.3).restart();
 }
 
-export function removeEdgeFromSimulation(simulation, edgeId) {
+export function removeEdgeFromSimulation(simulation, linkId) {
   const linkForce = simulation.force("link");
-  const edges = linkForce.links().filter(e => e.id !== edgeId);
+  const links = linkForce.links().filter(e => e.id !== linkId);
   linkForce.links(edges);
   simulation.alpha(0.3).restart();
 }
@@ -305,9 +305,9 @@ Create `src/store/graphReducer.js`:
 
 ```javascript
 import {
-  getAllNodes, getAllEdges,
+  getAllNodes, getAllLinks,
   createNode, updateNode, deleteNode,
-  createEdge, deleteEdge
+  createLink, deleteLink
 } from '../database/queries';
 import {
   addNodeToSimulation, removeNodeFromSimulation,
@@ -317,7 +317,7 @@ import {
 export const initialState = {
   graph: {
     nodes: [],
-    edges: []
+    links: []
   },
   ui: {
     selectedNode: null,
@@ -333,10 +333,10 @@ export default function graphReducer(state, action) {
 
     case 'LOAD_GRAPH':
       const nodes = getAllNodes();
-      const edges = getAllEdges();
+      const links = getAllLinks();
       return {
         ...state,
-        graph: { nodes, edges }
+        graph: { nodes, links }
       };
 
     case 'ADD_NODE': {
@@ -367,7 +367,7 @@ export default function graphReducer(state, action) {
         ...state,
         graph: {
           nodes: state.graph.nodes.filter(n => n.id !== action.payload),
-          edges: state.graph.edges.filter(e =>
+          links: state.graph.edges.filter(e =>
             e.source.id !== action.payload && e.target.id !== action.payload
           )
         },
@@ -379,8 +379,8 @@ export default function graphReducer(state, action) {
     }
 
     case 'ADD_EDGE': {
-      const id = createEdge(action.payload);
-      const newEdge = { id, ...action.payload };
+      const id = createLink(action.payload);
+      const newLink = { id, ...action.payload };
 
       if (state.simulation) {
         addEdgeToSimulation(state.simulation, newEdge);
@@ -390,7 +390,7 @@ export default function graphReducer(state, action) {
         ...state,
         graph: {
           ...state.graph,
-          edges: [...state.graph.edges, newEdge]
+          links: [...state.graph.edges, newEdge]
         }
       };
     }
@@ -458,7 +458,7 @@ import { GraphContext } from '../store/GraphContext';
 import { createSimulation } from '../engine/forceSimulation';
 import * as d3 from 'd3';
 import Node from './Node';
-import Edge from './Edge';
+import Link from './Edge';
 
 export default function GraphCanvas() {
   const { state, dispatch } = useContext(GraphContext);
@@ -499,7 +499,7 @@ export default function GraphCanvas() {
     <svg ref={svgRef} width="100%" height="100vh">
       <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
         {state.graph.edges.map(edge => (
-          <Edge key={edge.id} edge={edge} />
+          <Link key={edge.id} link={edge} />
         ))}
         {state.graph.nodes.map(node => (
           <Node key={node.id} node={node} />
@@ -563,13 +563,13 @@ export default function Node({ node }) {
 }
 ```
 
-### Step 5.3: Edge Component
+### Step 5.3: Link Component
 Create `src/components/Edge.jsx`:
 
 ```javascript
-export default function Edge({ edge }) {
-  const source = edge.source;
-  const target = edge.target;
+export default function Edge({ link }) {
+  const source = link.source;
+  const target = link.target;
 
   return (
     <line
@@ -666,7 +666,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 - [ ] Delete node → removed from graph
 
 ### Enhancements
-1. Add EdgeForm for creating edges between nodes
+1. Add EdgeForm for creating links between nodes
 2. Add NodeDetailPanel for viewing/editing selected node
 3. Add ContextMenu for right-click actions
 4. Add keyboard shortcuts (Delete, Escape)
@@ -694,5 +694,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 ### Performance issues
 - Throttle tick updates: `if (tickCount % 2 === 0) dispatch(...)`
-- Use React.memo on Node/Edge components
+- Use React.memo on Node/Link components
 - Reduce simulation alpha decay rate

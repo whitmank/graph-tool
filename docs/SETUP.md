@@ -8,6 +8,7 @@ Complete guide to setting up your development environment.
 - **Node.js** 18.0.0 or higher
 - **npm** 9.0.0 or higher
 - **Git** 2.40.0 or higher
+- **SurrealDB** 2.x or higher ([installation](https://surrealdb.com/install))
 - Modern browser with DevTools
 
 ### Recommended
@@ -29,31 +30,33 @@ npm install
 
 **Dependencies installed:**
 - `react`, `react-dom` - UI framework
-- `d3` - Force simulation
-- `sql.js` - SQLite WASM
-- `localforage` - IndexedDB wrapper
+- `react-router-dom` - Client-side routing
+- `express` - Backend server
+- `surrealdb.js` - SurrealDB client
+- `chokidar` - File watching
+- `ws` - WebSocket support
 
-### 2. Environment Configuration
+### 2. Data Directory Structure
 
-Create `.env.local` for local overrides:
+The server will create these directories automatically:
 
-```bash
-# Optional: Custom Vite dev server port
-VITE_PORT=5173
-
-# Optional: SQL.js CDN override
-VITE_SQLJS_CDN=https://sql.js.org/dist/
 ```
-
-Default configuration in `vite.config.js` works out of the box.
+graphtool_0.1/
+├── files/               # Data source (created on first run)
+│   ├── nodes/          # Node JSON files
+│   └── links/          # Link JSON files
+├── data-sources.json   # Data source configuration (created on first run)
+└── graphtool.db/       # SurrealDB cache (ephemeral, recreated)
+```
 
 ### 3. Verify Setup
 
 ```bash
-npm run dev
+npm start
 ```
 
-Visit http://localhost:5173 - you should see an empty graph canvas.
+Visit http://localhost:3000 - you should see the main interface.
+Developer interface: http://localhost:3000/dev
 
 ## Development Workflow
 
@@ -66,11 +69,11 @@ git add .
 git commit -m "Initial commit"
 
 # Create feature branch
-git checkout -b feature/add-edge-creation
+git checkout -b feature/add-link-creation
 
 # After changes
 git add .
-git commit -m "Add edge creation UI"
+git commit -m "Add link creation UI"
 ```
 
 **Commit Message Format:**
@@ -137,8 +140,9 @@ npx prettier --write "src/**/*.{js,jsx,css}"
    - Monitor database operations
 
 4. **Network Tab**
-   - Verify sql.js WASM loads (~1.5MB)
-   - Check for 404s on assets
+   - Monitor WebSocket connection status
+   - Check API requests to `/api/nodes`, `/api/links`
+   - Verify assets load correctly
 
 ## Project Structure
 
@@ -154,7 +158,7 @@ src/
 ├── components/
 │   ├── GraphCanvas.jsx    # Main canvas
 │   ├── Node.jsx           # Node component
-│   ├── Edge.jsx           # Edge component
+│   ├── Edge.jsx           # Link component
 │   └── ui/
 │       ├── App.jsx        # Root component
 │       └── Toolbar.jsx    # Controls
@@ -236,18 +240,20 @@ simulation.on("tick", () => {
 
 ## Common Issues
 
-**"Cannot find module 'sql.js'"**
-- Run `npm install` again
-- Check `node_modules/sql.js` exists
+**"SurrealDB not found"**
+- Install SurrealDB: `brew install surrealdb/tap/surreal` (macOS)
+- Or follow [SurrealDB installation](https://surrealdb.com/install)
+- Verify: `surreal version`
 
-**HMR not working**
-- Restart dev server
-- Clear browser cache
-- Check Vite console for errors
+**Server won't start**
+- Check port 3000 is not already in use
+- Kill any existing node processes
+- Check SurrealDB is installed
 
-**Database resets on refresh**
-- Verify `saveDatabase()` is called after mutations
-- Check browser IndexedDB storage not full
+**Data not persisting**
+- Verify `files/` directory exists and is writable
+- Check server console for file write errors
+- Ensure disk space available
 - Look for errors in console during save
 
 **Port already in use**

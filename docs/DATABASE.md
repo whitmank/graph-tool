@@ -1,392 +1,741 @@
 # Database Module
 
 ## Overview
-GraphTool uses sql.js (SQLite compiled to WebAssembly) for client-side data persistence. All graph data lives in a single SQLite database stored in the browser.
+GraphTool uses **SurrealDB** - a modern multi-model database - for server-side data persistence. The backend manages the SurrealDB process and exposes a REST API for the frontend to consume.
+
+**Architecture**: Client-Server
+- **Backend**: Node.js + Express + SurrealDB
+- **Frontend**: React (consumes REST API)
+- **Storage**: File-based (data/graphtool.db/)
+
+---
 
 ## Schema Design
 
-### Nodes Table
-```sql
-CREATE TABLE nodes (
-  id TEXT PRIMARY KEY,
-  label TEXT NOT NULL,
-  url TEXT,
-  x REAL,
-  y REAL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+### Nodes Collection (Table)
+
+**Document Structure**:
+```javascript
+{
+  id: "nodes:abc123",          // SurrealDB auto-generated ID
+  label: "React Documentation", // Required display name
+  url: "https://react.dev",     // Optional external link
+  x: 150.5,                     // X position from D3 (nullable)
+  y: 200.3,                     // Y position from D3 (nullable)
+  created_at: "2025-12-31T12:00:00Z",
+  updated_at: "2025-12-31T12:30:00Z"  // Optional
+}
 ```
 
 **Fields**:
-- `id`: UUID (e.g., "550e8400-e29b-41d4-a716-446655440000")
-- `label`: Display name (e.g., "React Documentation")
-- `url`: Optional external link (e.g., "https://react.dev")
+- `id`: SurrealDB record ID (format: `nodes:uniqueid`)
+- `label`: Display name (required)
+- `url`: Optional external link
 - `x`, `y`: Position cache from D3 simulation (nullable)
-- `created_at`: Timestamp for sorting/auditing
+- `created_at`: ISO 8601 timestamp
+- `updated_at`: ISO 8601 timestamp (set on updates)
 
-**Indexes**:
-```sql
-CREATE INDEX idx_nodes_created ON nodes(created_at);
-```
+### Links Collection (Table)
 
-### Edges Table
-```sql
-CREATE TABLE edges (
-  id TEXT PRIMARY KEY,
-  source_id TEXT NOT NULL,
-  target_id TEXT NOT NULL,
-  label TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (source_id) REFERENCES nodes(id) ON DELETE CASCADE,
-  FOREIGN KEY (target_id) REFERENCES nodes(id) ON DELETE CASCADE
-);
+**Document Structure**:
+```javascript
+{
+  id: "links:xyz789",           // SurrealDB auto-generated ID
+  source_id: "nodes:abc123",    // Reference to source node
+  target_id: "nodes:def456",    // Reference to target node
+  label: "depends on",          // Optional relationship description
+  created_at: "2025-12-31T12:00:00Z",
+  updated_at: "2025-12-31T12:30:00Z"  // Optional
+}
 ```
 
 **Fields**:
-- `id`: UUID
-- `source_id`: Starting node
-- `target_id`: Ending node
-- `label`: Optional relationship description (e.g., "depends on")
-- `created_at`: Timestamp
+- `id`: SurrealDB record ID (format: `links:uniqueid`)
+- `source_id`: Starting node ID (string reference)
+- `target_id`: Ending node ID (string reference)
+- `label`: Optional relationship description
+- `created_at`: ISO 8601 timestamp
+- `updated_at`: ISO 8601 timestamp (set on updates)
 
-**Indexes**:
-```sql
-CREATE INDEX idx_edges_source ON edges(source_id);
-CREATE INDEX idx_edges_target ON edges(target_id);
+**Notes**:
+- SurrealDB handles schema-less documents (no formal CREATE TABLE needed)
+- Referential integrity handled at application level
+- Cascade deletes implemented in `db-service.js` deleteNode() function
+
+---
+
+## File-Based Persistence
+
+**Architecture**: Files are the **source of truth**. SurrealDB serves as an ephemeral in-memory cache for fast queries.
+
+### Storage Model
+
+**Primary Storage**: JSON files on disk
+- **Location**: `files/nodes/` and `files/links/` directories
+- **Format**: One JSON file per node/link
+- **Naming**: `{table}_{id-suffix}.json`
+  - Example: `nodes:abc123` → `node_abc123.json`
+  - Example: `links:xyz789` → `link_xyz789.json`
+
+**Cache Layer**: SurrealDB in-memory database
+- **Purpose**: Fast querying and relationships
+- **Lifecycle**: Populated on server startup from files
+- **Persistence**: None - recreated from files each start
+
+### File Structure Examples
+
+**Node file** (`files/nodes/node_abc123.json`):
+```json
+{
+  "id": "nodes:abc123",
+  "label": "React Documentation",
+  "url": "https://react.dev",
+  "x": 150.5,
+  "y": 200.3,
+  "created_at": "2025-12-31T12:00:00Z",
+  "updated_at": "2025-12-31T12:30:00Z"
+}
 ```
 
-**Constraints**:
-- Cascade delete: Deleting a node removes all connected edges
-- No self-loops enforced at app level (not DB constraint)
+**Link file** (`files/links/link_xyz789.json`):
+```json
+{
+  "id": "links:xyz789",
+  "source_id": "nodes:abc123",
+  "target_id": "nodes:def456",
+  "label": "depends on",
+  "created_at": "2025-12-31T12:00:00Z"
+}
+```
 
-## CRUD Operations API
+### Data Flow
 
-### Nodes
+**On Server Startup**:
+1. Read all JSON files from `files/nodes/` and `files/links/`
+2. Validate and parse JSON
+3. Populate SurrealDB cache with all records
+4. Start file watchers for live sync
+
+**On Create/Update**:
+1. Write to SurrealDB (fast response)
+2. Write to JSON file asynchronously (durability)
+3. Broadcast WebSocket update to connected clients
+
+**On Delete**:
+1. Delete from SurrealDB
+2. Delete JSON file
+3. For node deletes: cascade delete all connected link files
+4. Broadcast WebSocket update
+
+**On External File Change** (file watcher):
+1. Detect file add/change/delete
+2. Update SurrealDB cache accordingly
+3. Broadcast WebSocket update to clients
+
+### Atomic Writes
+
+File writes use atomic write-then-rename pattern:
+1. Write to temporary file (`*.json.tmp`)
+2. Atomically rename to target filename
+3. Prevents corruption if write is interrupted
+
+---
+
+## Data Source Management
+
+GraphTool supports **multiple data sources** with hot-reload capability.
+
+### Configuration
+
+**File**: `data-sources.json` (project root)
+
+```json
+{
+  "current": "default",
+  "sources": {
+    "default": {
+      "name": "Default (Project Files)",
+      "path": "./files",
+      "description": "Default data storage in project folder"
+    },
+    "external": {
+      "name": "External Drive",
+      "path": "/Volumes/External/graphtool-data",
+      "description": "Backup data on external drive"
+    }
+  }
+}
+```
+
+### Data Source Operations
+
+**Switch Source** (hot reload without server restart):
+1. Validate new source path exists
+2. Stop file watchers
+3. Clear SurrealDB cache
+4. Load files from new source
+5. Restart file watchers on new path
+6. Broadcast update to clients
+
+**Add Source**:
+```javascript
+// POST /api/data-sources
+{
+  "id": "project-backup",
+  "name": "Project Backup",
+  "path": "/Users/me/backups/graphtool",
+  "description": "Monthly backup location"
+}
+```
+
+**Developer Interface**: Available at `/dev` route with UI for managing sources
+
+---
+
+## Backend API (db-service.js)
+
+### Node Operations
 
 #### getAllNodes()
 ```javascript
-function getAllNodes() {
-  const stmt = db.prepare("SELECT * FROM nodes ORDER BY created_at");
-  const result = [];
-  while (stmt.step()) {
-    result.push({
-      id: stmt.getAsObject().id,
-      label: stmt.getAsObject().label,
-      url: stmt.getAsObject().url,
-      x: stmt.getAsObject().x,
-      y: stmt.getAsObject().y
-    });
-  }
-  stmt.free();
-  return result;
+async function getAllNodes() {
+  const result = await db.query('SELECT * FROM nodes ORDER BY label');
+  return result[0] || [];
 }
 ```
+
+**Returns**: Array of node objects
+
+---
+
+#### getNode(id)
+```javascript
+async function getNode(id) {
+  const result = await db.query(`SELECT * FROM ${id}`);
+  return result[0]?.[0] || null;
+}
+```
+
+**Parameters**:
+- `id`: SurrealDB record ID (e.g., "nodes:abc123")
+
+**Returns**: Node object or null
+
+---
 
 #### createNode(data)
 ```javascript
-function createNode({ label, url = null }) {
-  const id = crypto.randomUUID();
-  db.run(
-    "INSERT INTO nodes (id, label, url) VALUES (?, ?, ?)",
-    [id, label, url]
-  );
-  return id;
+async function createNode(data) {
+  const result = await db.create('nodes', {
+    label: data.label,
+    url: data.url || null,
+    x: data.x || null,
+    y: data.y || null,
+    created_at: new Date().toISOString()
+  });
+  return Array.isArray(result) ? result[0] : result;
 }
 ```
+
+**Parameters**:
+- `data.label`: (required) Node display name
+- `data.url`: (optional) External link
+- `data.x`, `data.y`: (optional) Position coordinates
+
+**Returns**: Created node object with auto-generated ID
+
+---
 
 #### updateNode(id, data)
 ```javascript
-function updateNode(id, { label, url, x, y }) {
-  const updates = [];
-  const values = [];
+async function updateNode(id, data) {
+  const updateQuery = `UPDATE ${id} SET
+    label = $label,
+    url = $url,
+    x = $x,
+    y = $y,
+    updated_at = $updated_at`;
 
-  if (label !== undefined) {
-    updates.push("label = ?");
-    values.push(label);
-  }
-  if (url !== undefined) {
-    updates.push("url = ?");
-    values.push(url);
-  }
-  if (x !== undefined && y !== undefined) {
-    updates.push("x = ?, y = ?");
-    values.push(x, y);
-  }
+  const result = await db.query(updateQuery, {
+    label: data.label,
+    url: data.url || null,
+    x: data.x,
+    y: data.y,
+    updated_at: new Date().toISOString()
+  });
 
-  values.push(id);
-  db.run(
-    `UPDATE nodes SET ${updates.join(", ")} WHERE id = ?`,
-    values
-  );
+  return result[0]?.[0] || null;
 }
 ```
+
+**Parameters**:
+- `id`: SurrealDB record ID
+- `data`: Object with fields to update
+
+**Returns**: Updated node object
+
+---
 
 #### deleteNode(id)
 ```javascript
-function deleteNode(id) {
-  db.run("DELETE FROM nodes WHERE id = ?", [id]);
-  // Edges cascade delete automatically
+async function deleteNode(id) {
+  // Delete all connected links first
+  await db.query('DELETE FROM links WHERE source_id = $id OR target_id = $id', { id });
+
+  // Then delete the node
+  await db.query(`DELETE ${id}`);
+
+  return { success: true, id };
 }
 ```
 
-### Edges
+**Parameters**:
+- `id`: SurrealDB record ID
 
-#### getAllEdges()
+**Returns**: Success object
+
+**Note**: Cascade deletes all links connected to this node
+
+---
+
+### Link Operations
+
+#### getAllLinks()
 ```javascript
-function getAllEdges() {
-  const stmt = db.prepare("SELECT * FROM edges ORDER BY created_at");
-  const result = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    result.push({
-      id: row.id,
-      source: row.source_id,  // D3 expects 'source', not 'source_id'
-      target: row.target_id,  // D3 expects 'target', not 'target_id'
-      label: row.label
-    });
-  }
-  stmt.free();
-  return result;
+async function getAllLinks() {
+  const result = await db.query('SELECT * FROM links');
+  return result[0] || [];
 }
 ```
 
-#### createEdge(data)
+**Returns**: Array of link objects
+
+---
+
+#### getLink(id)
 ```javascript
-function createEdge({ source_id, target_id, label = null }) {
-  const id = crypto.randomUUID();
-  db.run(
-    "INSERT INTO edges (id, source_id, target_id, label) VALUES (?, ?, ?, ?)",
-    [id, source_id, target_id, label]
+async function getLink(id) {
+  const result = await db.query(`SELECT * FROM ${id}`);
+  return result[0]?.[0] || null;
+}
+```
+
+---
+
+#### createLink(data)
+```javascript
+async function createLink(data) {
+  const result = await db.create('links', {
+    source_id: data.source_id,
+    target_id: data.target_id,
+    label: data.label || null,
+    created_at: new Date().toISOString()
+  });
+  return Array.isArray(result) ? result[0] : result;
+}
+```
+
+**Parameters**:
+- `data.source_id`: (required) Source node ID
+- `data.target_id`: (required) Target node ID
+- `data.label`: (optional) Relationship description
+
+---
+
+#### updateLink(id, data)
+```javascript
+async function updateLink(id, data) {
+  const updateQuery = `UPDATE ${id} SET
+    label = $label,
+    updated_at = $updated_at`;
+
+  const result = await db.query(updateQuery, {
+    label: data.label || null,
+    updated_at: new Date().toISOString()
+  });
+
+  return result[0]?.[0] || null;
+}
+```
+
+---
+
+#### deleteLink(id)
+```javascript
+async function deleteLink(id) {
+  await db.query(`DELETE ${id}`);
+  return { success: true, id };
+}
+```
+
+---
+
+#### getNodeLinks(nodeId)
+```javascript
+async function getNodeLinks(nodeId) {
+  const result = await db.query(
+    'SELECT * FROM links WHERE source_id = $nodeId OR target_id = $nodeId',
+    { nodeId }
   );
-  return id;
+  return result[0] || [];
 }
 ```
 
-#### updateEdge(id, { label })
+**Description**: Get all links connected to a specific node
+
+---
+
+## Frontend REST API
+
+The backend Express server exposes HTTP endpoints that the React frontend consumes.
+
+### Node Endpoints
+
+#### GET /api/nodes
+**Description**: Get all nodes
+
+**Response**:
 ```javascript
-function updateEdge(id, { label }) {
-  db.run("UPDATE edges SET label = ? WHERE id = ?", [label, id]);
-}
-```
-
-#### deleteEdge(id)
-```javascript
-function deleteEdge(id) {
-  db.run("DELETE FROM edges WHERE id = ?", [id]);
-}
-```
-
-## Persistence Strategy
-
-### Browser Storage: IndexedDB
-sql.js databases are in-memory by default. We persist by exporting the binary to IndexedDB.
-
-**Why IndexedDB over localStorage?**
-- Storage limit: ~50MB+ vs 5MB
-- Stores binary blobs efficiently
-- Asynchronous API (non-blocking)
-
-### Save Flow
-```javascript
-import localforage from 'localforage';
-
-async function saveDatabase() {
-  const data = db.export();  // Uint8Array
-  await localforage.setItem('graphtool_db', data);
-}
-
-// Debounced auto-save after mutations
-const debouncedSave = debounce(saveDatabase, 500);
-```
-
-### Load Flow
-```javascript
-async function loadDatabase() {
-  const data = await localforage.getItem('graphtool_db');
-
-  if (data) {
-    db = new SQL.Database(data);
-  } else {
-    db = new SQL.Database();
-    initSchema();  // Create tables
+[
+  {
+    id: "nodes:abc123",
+    label: "React Documentation",
+    url: "https://react.dev",
+    x: 150.5,
+    y: 200.3,
+    created_at: "2025-12-31T12:00:00Z"
   }
+]
+```
+
+---
+
+#### GET /api/nodes/:id
+**Description**: Get a single node by ID
+
+**Example**: `GET /api/nodes/nodes:abc123`
+
+**Response**:
+```javascript
+{
+  id: "nodes:abc123",
+  label: "React Documentation",
+  url: "https://react.dev",
+  x: 150.5,
+  y: 200.3
 }
 ```
 
-### Export/Import Features
+---
 
-#### Export to File
+#### POST /api/nodes
+**Description**: Create a new node
+
+**Request Body**:
 ```javascript
-function exportToFile() {
-  const data = db.export();
-  const blob = new Blob([data], { type: 'application/x-sqlite3' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `graph_${Date.now()}.sqlite`;
-  a.click();
+{
+  label: "React Documentation",   // required
+  url: "https://react.dev"        // optional
 }
 ```
 
-#### Import from File
-```javascript
-function importFromFile(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const data = new Uint8Array(e.target.result);
-    db = new SQL.Database(data);
+**Response**: Created node object with auto-generated ID
 
-    // Reload graph from new DB
-    const nodes = getAllNodes();
-    const edges = getAllEdges();
-    dispatch({ type: 'LOAD_GRAPH', payload: { nodes, edges } });
+**Example cURL**:
+```bash
+curl -X POST http://localhost:3000/api/nodes \
+  -H "Content-Type: application/json" \
+  -d '{"label":"React Docs","url":"https://react.dev"}'
+```
+
+---
+
+#### PUT /api/nodes/:id
+**Description**: Update an existing node
+
+**Request Body**:
+```javascript
+{
+  label: "Updated Label",
+  url: "https://newurl.com",
+  x: 200,
+  y: 150
+}
+```
+
+**Response**: Updated node object
+
+---
+
+#### DELETE /api/nodes/:id
+**Description**: Delete a node (and all connected links)
+
+**Response**:
+```javascript
+{
+  success: true,
+  id: "nodes:abc123"
+}
+```
+
+---
+
+### Link Endpoints
+
+#### GET /api/links
+**Description**: Get all links
+
+**Response**: Array of link objects
+
+---
+
+#### GET /api/links/:id
+**Description**: Get a single link by ID
+
+---
+
+#### POST /api/links
+**Description**: Create a new link
+
+**Request Body**:
+```javascript
+{
+  source_id: "nodes:abc123",      // required
+  target_id: "nodes:def456",      // required
+  label: "depends on"             // optional
+}
+```
+
+**Response**: Created link object
+
+---
+
+#### PUT /api/links/:id
+**Description**: Update an link
+
+**Request Body**:
+```javascript
+{
+  label: "new relationship type"
+}
+```
+
+---
+
+#### DELETE /api/links/:id
+**Description**: Delete an link
+
+---
+
+#### GET /api/nodes/:id/links
+**Description**: Get all links connected to a specific node
+
+**Example**: `GET /api/nodes/nodes:abc123/links`
+
+**Response**: Array of link objects where source_id or target_id matches the node ID
+
+---
+
+## Frontend Usage Examples
+
+### Fetching Nodes
+```javascript
+// In React component
+useEffect(() => {
+  fetch('/api/nodes')
+    .then(res => res.json())
+    .then(nodes => {
+      dispatch({ type: 'LOAD_NODES', payload: nodes });
+    });
+}, []);
+```
+
+### Creating a Node
+```javascript
+async function handleCreateNode(label, url) {
+  const response = await fetch('/api/nodes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, url })
+  });
+
+  const newNode = await response.json();
+  dispatch({ type: 'ADD_NODE', payload: newNode });
+}
+```
+
+### Updating Node Position (from D3 simulation)
+```javascript
+async function saveNodePosition(nodeId, x, y) {
+  await fetch(`/api/nodes/${nodeId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x, y })
+  });
+}
+```
+
+### Deleting a Node
+```javascript
+async function handleDeleteNode(nodeId) {
+  await fetch(`/api/nodes/${nodeId}`, {
+    method: 'DELETE'
+  });
+
+  dispatch({ type: 'DELETE_NODE', payload: nodeId });
+}
+```
+
+---
+
+## WebSocket API
+
+GraphTool uses WebSockets for **real-time updates** across all connected clients.
+
+### Connection
+
+**Endpoint**: `ws://localhost:3000`
+
+```javascript
+const ws = new WebSocket('ws://localhost:3000');
+
+ws.onopen = () => {
+  console.log('[WebSocket] Connected to server');
+};
+
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  handleDataChange(message);
+};
+```
+
+### Message Format
+
+All WebSocket messages follow this structure:
+
+```javascript
+{
+  "type": "node" | "link",
+  "action": "added" | "updated" | "deleted",
+  "id": "nodes:abc123" | "links:xyz789"
+}
+```
+
+### Event Types
+
+**Node Events**:
+- `{type: "node", action: "added", id: "nodes:abc123"}` - New node created
+- `{type: "node", action: "updated", id: "nodes:abc123"}` - Node updated
+- `{type: "node", action: "deleted", id: "nodes:abc123"}` - Node deleted
+
+**Link Events**:
+- `{type: "link", action: "added", id: "links:xyz789"}` - New link created
+- `{type: "link", action: "updated", id: "links:xyz789"}` - Link updated
+- `{type: "link", action: "deleted", id: "links:xyz789"}` - Link deleted
+
+### Frontend Integration
+
+```javascript
+useEffect(() => {
+  const ws = new WebSocket('ws://localhost:3000');
+
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+
+    if (message.type === 'node') {
+      loadNodes(); // Refresh nodes from API
+      if (message.action === 'deleted') {
+        loadLinks(); // Node delete cascades to links
+      }
+    } else if (message.type === 'link') {
+      loadLinks(); // Refresh links from API
+    }
   };
-  reader.readAsArrayBuffer(file);
-}
+
+  return () => ws.close();
+}, []);
 ```
 
-## Initialization
+### Broadcast Triggers
 
-### Database Setup (`db.js`)
-```javascript
-import initSqlJs from 'sql.js';
-import localforage from 'localforage';
+WebSocket broadcasts are sent when:
+1. **API operations**: Any REST API create/update/delete
+2. **File watcher events**: External file changes detected
+3. **Data source switches**: When switching data sources
 
-let db = null;
+This ensures all clients stay synchronized in real-time.
 
-export async function initDatabase() {
-  const SQL = await initSqlJs({
-    locateFile: file => `https://sql.js.org/dist/${file}`
-  });
+---
 
-  const savedData = await localforage.getItem('graphtool_db');
+## Development Workflow
 
-  if (savedData) {
-    db = new SQL.Database(savedData);
-  } else {
-    db = new SQL.Database();
-    createSchema();
-  }
+### Starting the Server
+```bash
+# Install dependencies first
+npm install
 
-  return db;
-}
-
-function createSchema() {
-  db.run(`
-    CREATE TABLE nodes (
-      id TEXT PRIMARY KEY,
-      label TEXT NOT NULL,
-      url TEXT,
-      x REAL,
-      y REAL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE edges (
-      id TEXT PRIMARY KEY,
-      source_id TEXT NOT NULL,
-      target_id TEXT NOT NULL,
-      label TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (source_id) REFERENCES nodes(id) ON DELETE CASCADE,
-      FOREIGN KEY (target_id) REFERENCES nodes(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`CREATE INDEX idx_edges_source ON edges(source_id)`);
-  db.run(`CREATE INDEX idx_edges_target ON edges(target_id)`);
-}
+# Start the server (spawns SurrealDB + Express)
+npm start
+# or
+node server.js
 ```
 
-## Position Caching
+**Console Output**:
+```
+🚀 Starting SurrealDB...
+[SurrealDB]: Started web server on 127.0.0.1:8000
+✅ SurrealDB is ready!
+✅ Connected to SurrealDB
 
-**Why store x, y in database?**
-- Preserve user's manual node positioning
-- Faster initial render (skip simulation convergence)
-- Resume graph layout exactly as user left it
-
-**When to update positions?**
-```javascript
-// After simulation settles (alpha < threshold)
-simulation.on("end", () => {
-  nodes.forEach(node => {
-    updateNode(node.id, { x: node.x, y: node.y });
-  });
-  debouncedSave();
-});
-
-// Or periodically during interaction
-let lastSave = Date.now();
-simulation.on("tick", () => {
-  if (Date.now() - lastSave > 5000) {
-    // Save positions every 5 seconds
-    nodes.forEach(node => updateNode(node.id, { x: node.x, y: node.y }));
-    debouncedSave();
-    lastSave = Date.now();
-  }
-});
+🌐 GraphTool server running on http://localhost:3000
+📊 SurrealDB running on http://127.0.0.1:8000
 ```
 
-## Data Validation
+### Testing the API
+```bash
+# Get all nodes
+curl http://localhost:3000/api/nodes
 
-**Input Validation** (at app layer, before DB):
-```javascript
-function validateNode({ label, url }) {
-  if (!label || label.trim().length === 0) {
-    throw new Error("Label is required");
-  }
-  if (url && !isValidURL(url)) {
-    throw new Error("Invalid URL format");
-  }
-}
+# Create a node
+curl -X POST http://localhost:3000/api/nodes \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Test Node","url":"https://example.com"}'
 
-function validateEdge({ source_id, target_id }) {
-  if (source_id === target_id) {
-    throw new Error("Self-loops not allowed");
-  }
-  if (!nodeExists(source_id) || !nodeExists(target_id)) {
-    throw new Error("Source or target node does not exist");
-  }
-}
+# Update a node (replace ID with actual ID from create response)
+curl -X PUT http://localhost:3000/api/nodes/nodes:abc123 \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Updated Node"}'
+
+# Delete a node
+curl -X DELETE http://localhost:3000/api/nodes/nodes:abc123
 ```
 
-## Performance
+---
 
-**Batch Operations**:
-```javascript
-function createMultipleNodes(nodeArray) {
-  db.run("BEGIN TRANSACTION");
-  nodeArray.forEach(data => createNode(data));
-  db.run("COMMIT");
-}
+## Prerequisites
+
+### SurrealDB Installation
+GraphTool requires SurrealDB to be installed on your system.
+
+**macOS**:
+```bash
+brew install surrealdb/tap/surreal
 ```
 
-**Query Optimization**:
-- Use prepared statements for repeated queries
-- Index on frequently queried columns (source_id, target_id)
-- Avoid SELECT * when only specific columns needed
-
-## Migration Strategy
-
-**Future Schema Changes**:
-```javascript
-// Version tracking
-db.run("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)");
-
-function migrate() {
-  const version = getCurrentVersion();
-
-  if (version < 2) {
-    db.run("ALTER TABLE nodes ADD COLUMN color TEXT");
-    updateVersion(2);
-  }
-
-  if (version < 3) {
-    db.run("CREATE TABLE tags (...)");
-    updateVersion(3);
-  }
-}
+**Linux**:
+```bash
+curl -sSf https://install.surrealdb.com | sh
 ```
+
+**Windows**:
+```powershell
+iwr https://install.surrealdb.com -useb | iex
+```
+
+**Verify Installation**:
+```bash
+surreal version
+```
+
+See [SurrealDB docs](https://surrealdb.com/docs/installation) for more installation options.
+

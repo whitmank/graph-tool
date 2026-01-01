@@ -16,11 +16,12 @@ cd graphtool_0.1
 # Install dependencies
 npm install
 
-# Start development server
-npm run dev
+# Start server (backend + frontend)
+npm start
 ```
 
-Open http://localhost:5173 in your browser.
+Server starts on http://localhost:3000
+Developer interface: http://localhost:3000/dev
 
 ## Your First Graph
 
@@ -30,11 +31,13 @@ Open http://localhost:5173 in your browser.
 - The node appears and starts positioning itself
 
 ### 2. Add More Nodes
-- Add a few more: "D3.js", "SQLite", "Vite"
-- Nodes automatically repel and space themselves
+- Add a few more: "D3.js", "SurrealDB", "Vite"
+- View your nodes in the Developer Interface
 
-### 3. Add an Edge (Connection)
-Future implementation - currently nodes-only
+### 3. Add a Link (Connection)
+- Go to http://localhost:3000/dev
+- Click "Links" tab
+- Select source and target nodes, click "Add Link"
 
 ### 4. Interact
 - **Drag**: Click and drag any node to reposition
@@ -43,15 +46,17 @@ Future implementation - currently nodes-only
 - **Select**: Click a node to highlight it
 
 ### 5. Data Persistence
-- Refresh the page - your graph persists!
-- Data is stored in browser IndexedDB automatically
+- All data saved to JSON files in `files/` directory
+- Check `files/nodes/` and `files/links/` for your graph data
+- Files are human-readable and git-friendly
 
 ## What's Happening Under the Hood
 
-1. **D3.js** calculates physics forces
-2. **React** renders SVG elements
-3. **sql.js** stores data in SQLite (in-memory)
-4. **localforage** persists database to IndexedDB
+1. **Express server** handles HTTP and WebSocket connections
+2. **SurrealDB** provides fast in-memory query cache
+3. **File service** saves data to JSON files (source of truth)
+4. **File watcher** detects external file changes
+5. **WebSocket** broadcasts real-time updates to all clients
 
 ## Next Steps
 
@@ -61,14 +66,22 @@ Future implementation - currently nodes-only
 
 ## Troubleshooting
 
-**Nodes don't appear?**
-- Check browser console for errors
-- Verify database initialized (check Application > IndexedDB in DevTools)
+**Server won't start?**
+- Check if SurrealDB is installed: `surreal version`
+- Install it: `brew install surrealdb/tap/surreal` (macOS)
+- Check if port 3000 is already in use
 
-**Simulation not running?**
-- Ensure JavaScript is enabled
-- Check for WebAssembly support: `typeof WebAssembly !== 'undefined'`
+**Nodes/links don't appear?**
+- Check `files/nodes/` and `files/links/` directories exist
+- Verify JSON files are valid format
+- Check server console for file loading errors
 
 **Changes not persisting?**
-- Check IndexedDB quota in DevTools
-- Clear site data and reload if corrupted
+- Check file permissions on `files/` directory
+- Verify disk space available
+- Check server console for file write errors
+
+**Can't switch data sources?**
+- Verify target directory path exists
+- Check `data-sources.json` is valid JSON
+- Ensure target directory has `nodes/` and `links/` subdirectories

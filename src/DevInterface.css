@@ -1,0 +1,292 @@
+* {
+  box-sizing: border-box;
+}
+
+.app {
+  height: 100vh;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  background: #2a2a2a;
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #3a3a3a;
+  flex-shrink: 0;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #ff006e;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.indicator {
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.indicator.connected {
+  color: #4ade80;
+}
+
+.btn-connect {
+  background: #4ade80;
+  color: #1a1a1a;
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-connect:hover {
+  background: #22c55e;
+}
+
+/* Main Content */
+.main {
+  flex: 1;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+/* View Toggle */
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  background: #2a2a2a;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #3a3a3a;
+  flex-shrink: 0;
+}
+
+.view-toggle button {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #a0a0a0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-toggle button:hover {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.view-toggle button.active {
+  background: #ff006e;
+  color: white;
+}
+
+/* Form Section */
+.form-section {
+  background: #2a2a2a;
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #3a3a3a;
+  flex-shrink: 0;
+}
+
+.compact-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.compact-form input,
+.compact-form select {
+  flex: 1;
+  min-width: 150px;
+  padding: 0.5rem;
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.875rem;
+}
+
+.compact-form input:focus,
+.compact-form select:focus {
+  outline: none;
+  border-color: #ff006e;
+}
+
+.compact-form select {
+  cursor: pointer;
+}
+
+.compact-form button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: #ff006e;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #d10059;
+}
+
+.btn-cancel {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.btn-cancel:hover {
+  background: #4a4a4a;
+}
+
+/* Records Section */
+.records-section {
+  background: #2a2a2a;
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #3a3a3a;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #ff006e;
+}
+
+.count {
+  background: #3a3a3a;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #a0a0a0;
+}
+
+.empty {
+  text-align: center;
+  color: #666;
+  padding: 2rem;
+  margin: 0;
+}
+
+.table-wrapper {
+  flex: 1;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+table th {
+  background: #1a1a1a;
+  padding: 0.5rem;
+  text-align: left;
+  font-weight: 600;
+  color: #a0a0a0;
+  border-bottom: 1px solid #3a3a3a;
+  position: sticky;
+  top: 0;
+}
+
+table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+table tbody tr:hover {
+  background: #333;
+}
+
+.id-cell {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.no-url {
+  color: #666;
+}
+
+table a {
+  color: #4ade80;
+  text-decoration: none;
+}
+
+table a:hover {
+  text-decoration: underline;
+}
+
+.actions {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+
+.btn-edit, .btn-delete {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-edit {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-edit:hover {
+  background: #2563eb;
+}
+
+.btn-delete {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-delete:hover {
+  background: #dc2626;
+}

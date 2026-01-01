@@ -4,7 +4,7 @@
 Browser-based interactive graph visualization tool for creating and managing semantic networks. Users can visually explore relationships between concepts through an intuitive node-edge interface.
 
 ## Core Features
-- **Interactive Graph Creation**: Add/remove nodes and edges dynamically
+- **Interactive Graph Creation**: Add/remove nodes and links dynamically
 - **Hyperlink Attachment**: Attach external URLs to nodes
 - **Force-Directed Layout**: Automatic positioning using physics simulation
 - **Persistent Storage**: All data saved to local SQLite database
@@ -66,5 +66,5 @@ graphtool_0.1/
 
 ## Browser Compatibility
 - Modern browsers with WebAssembly support
-- Chrome/Edge 57+, Firefox 52+, Safari 11+
+- Chrome/Link 57+, Firefox 52+, Safari 11+
 - IndexedDB support required for persistence
