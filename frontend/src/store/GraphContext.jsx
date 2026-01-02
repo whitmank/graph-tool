@@ -39,6 +39,10 @@ export function GraphProvider({ children }) {
         }
       } else if (message.type === 'link') {
         loadLinks()
+      } else if (message.type === 'system' && message.action === 'reload') {
+        // Data source switched, reload everything
+        console.log('[GraphContext] Data source switched, reloading all data')
+        loadGraphData()
       }
     }
 

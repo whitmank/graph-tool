@@ -10,17 +10,17 @@ import * as d3 from 'd3'
  * @returns {Object} D3 force simulation instance
  */
 export function createSimulation(nodes, links, width, height) {
-  // Transform links to use D3's expected format (source/target instead of source_id/target_id)
-  const d3Links = links.map(link => ({
-    ...link,
-    source: link.source_id,
-    target: link.target_id
-  }))
+  // Transform links IN-PLACE to use D3's expected format
+  // D3 will replace source/target strings with actual node object references
+  links.forEach(link => {
+    link.source = link.source_id
+    link.target = link.target_id
+  })
 
   // Create the simulation with nodes
   const simulation = d3.forceSimulation(nodes)
     // Links: Spring forces between connected nodes
-    .force('link', d3.forceLink(d3Links)
+    .force('link', d3.forceLink(links)
       .id(d => d.id)
       .distance(150)  // Desired link length
       .strength(0.5)  // Spring stiffness

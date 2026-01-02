@@ -1,0 +1,294 @@
+/* Keita-Style CSS Template */
+/* Based on p5aholic.me design patterns */
+
+:root {
+  /* Light theme colors */
+  --bg-color: oklch(92% 0% 68deg);
+  --text-color: #000000;
+  --text-secondary: #666666;
+  --border-color: #e0e0e0;
+  --hover-color: #f5f5f5;
+  --accent-color: #0066cc;
+
+
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  --font-size-base: 16px;
+  --font-size-lg: 20px;
+  --font-size-sm: 14px;
+  --line-height: 1.6;
+
+  /* Spacing */
+  /* Variables assume default font size 16px */
+  --spacing-xs: 0.5rem;  /* ~8px  */
+  --spacing-sm: 1rem;    /* ~16px */
+  --spacing-md: 1.5rem;  /* ~24px */
+  --spacing-lg: 2rem;    /* ~32px */
+  --spacing-xl: 3rem;    /* ~48px */
+  --spacing-xxl: 4rem;   /* ~64px */
+  --in-frame: calc(max(20px, 4vmin) * 2);
+
+  /* Layout */
+  --max-width: 100vw;
+  --max-height: 100vh;
+  --border-radius: 10px;
+}
+
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
+  color: var(--text-color);
+  background-color: var(--bg-color);
+  width: 100vw;
+  height: 100vh;
+
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+
+/* Layout */
+.frame {
+  box-sizing: border-box;
+  position: absolute;
+  top: max(20px, 4vmin);
+  right: max(20px, 4vmin);
+  bottom: max(20px, 4vmin);
+  left: max(20px, 4vmin);
+  border: 1px solid var(--text-color);
+  z-index: 10;
+  pointer-events: none;
+}
+
+main {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 0;
+  padding: max(20px, 4vmin);
+  box-sizing: border-box;
+}
+
+#name {
+  margin: var(--in-frame);
+}
+
+/* Graph Visualization Styles */
+.graph-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+.graph-canvas-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+}
+
+/* Node Styles */
+.node-group {
+  cursor: grab;
+}
+
+.node-group:active {
+  cursor: grabbing;
+}
+
+.node-circle {
+  fill: var(--bg-color);
+  stroke: var(--text-color);
+  stroke-width: 1px;
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+.node-circle:hover {
+  fill: var(--hover-color);
+}
+
+.node-circle.selected {
+  fill: var(--text-color);
+  stroke: var(--bg-color);
+  stroke-width: 2px;
+}
+
+.node-label {
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 400;
+  fill: var(--text-color);
+  user-select: none;
+}
+
+.node-label.selected {
+  font-weight: 500;
+}
+
+.node-url-indicator {
+  fill: var(--text-color);
+  stroke: var(--bg-color);
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+
+/* Link Styles */
+.link-line {
+  stroke: var(--text-color);
+  stroke-width: 0.5px;
+  opacity: 0.3;
+  cursor: pointer;
+  transition: opacity 0.15s ease, stroke-width 0.15s ease;
+}
+
+.link-line:hover {
+  opacity: 0.5;
+}
+
+.link-line.selected {
+  stroke-width: 1.5px;
+  opacity: 1;
+}
+
+.link-label {
+  font-family: var(--font-family);
+  font-size: 11px;
+  fill: var(--text-secondary);
+  user-select: none;
+}
+
+/* Node Detail Panel */
+.node-detail-panel {
+  width: 300px;
+  height: 100%;
+  border-right: 1px solid var(--text-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--bg-color);
+}
+
+.panel-header {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--text-color);
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 400;
+}
+
+.panel-content {
+  padding: var(--spacing-md);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.panel-empty {
+  padding: var(--spacing-xl) var(--spacing-md);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.panel-empty p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.panel-hint {
+  margin-top: var(--spacing-xs);
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.detail-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.detail-group label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+  font-weight: 400;
+}
+
+.detail-value {
+  font-size: var(--font-size-sm);
+  color: var(--text-color);
+  word-wrap: break-word;
+  line-height: 1.5;
+}
+
+.detail-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.detail-value a {
+  color: var(--accent-color);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.detail-value a:hover {
+  text-decoration: underline;
+}
+
+.detail-input-inline {
+  width: 100%;
+  padding: var(--spacing-xs);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-color);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family);
+  transition: border-color 0.15s ease;
+}
+
+.detail-input-inline:hover {
+  border-bottom-color: var(--text-color);
+}
+
+.detail-input-inline:focus {
+  outline: none;
+  border-bottom-color: var(--text-color);
+  background: var(--hover-color);
+}
+
+.detail-input-inline::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.detail-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--spacing-md) 0;
+}
+
+/* Graph container */
+.graph-container {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}

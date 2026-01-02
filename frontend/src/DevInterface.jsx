@@ -369,24 +369,24 @@ function DevInterface() {
       {/* Header */}
       <header className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link to="/" style={{ color: '#4ade80', textDecoration: 'none', fontSize: '1.2rem' }}>←</Link>
+          <Link to="/" style={{ color: 'var(--text-color)', textDecoration: 'none', fontSize: '1.2rem' }}>←</Link>
           <h1>GraphTool Manager</h1>
         </div>
 
         {/* Data Source Switcher */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
-          <span style={{ fontSize: '0.7rem', color: '#888' }}>Active Source</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Active Source</span>
           <select
             value={currentSource?.id || ''}
             onChange={(e) => handleSwitchSource(e.target.value)}
             disabled={switching}
             style={{
-              background: '#2a2a2a',
-              color: '#e0e0e0',
-              border: '1px solid #3a3a3a',
-              borderRadius: '4px',
+              background: 'transparent',
+              color: 'var(--text-color)',
+              border: '1px solid var(--border-color)',
               padding: '0.4rem 0.6rem',
               fontSize: '0.875rem',
+              fontFamily: 'var(--font-family)',
               cursor: switching ? 'wait' : 'pointer'
             }}
           >
@@ -644,25 +644,25 @@ function DevInterface() {
                             }}
                             onMouseEnter={() => setSelectedSourceIndex(index)}
                             style={{
-                              background: isActive ? '#2a3a2a' : isSelected ? '#252525' : 'transparent',
+                              background: isActive ? 'var(--hover-color)' : isSelected ? 'var(--hover-color)' : 'transparent',
                               cursor: isActive ? 'default' : 'pointer',
                               transition: 'background 0.15s ease',
-                              outline: isSelected && !isActive ? '2px solid #4a4a4a' : 'none',
-                              outlineOffset: '-2px'
+                              outline: isSelected && !isActive ? '1px solid var(--text-color)' : 'none',
+                              outlineOffset: '-1px'
                             }}
                           >
                             <td className="id-cell">{id}</td>
                             <td>{source.name}</td>
-                            <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{source.path}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>{source.path}</td>
                             <td>{source.description || '—'}</td>
                             <td>
                               {isActive && (
-                                <span style={{ color: '#4ade80', fontSize: '0.875rem', fontWeight: 'bold' }}>
+                                <span style={{ color: 'var(--text-color)', fontSize: '0.875rem', fontWeight: '400' }}>
                                   ● Active
                                 </span>
                               )}
                               {isSelected && !isActive && (
-                                <span style={{ color: '#888', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
                                   {id === 'default'
                                     ? '⏎ Enter to switch'
                                     : '⏎ Enter to switch • Del to delete'

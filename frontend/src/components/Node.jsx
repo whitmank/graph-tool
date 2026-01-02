@@ -36,12 +36,9 @@ export default function Node({ node, simulation }) {
     }
 
     const handleMouseUp = () => {
-      // Release fixed position
+      // Release fixed position - let simulation resume
       node.fx = null
       node.fy = null
-
-      // Save position to backend
-      saveNodePosition(node.id, node.x, node.y)
 
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
@@ -56,54 +53,36 @@ export default function Node({ node, simulation }) {
     selectNode(node.id)
   }
 
-  const saveNodePosition = async (nodeId, x, y) => {
-    try {
-      await fetch(`/api/nodes/${nodeId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y })
-      })
-    } catch (error) {
-      console.error('Failed to save node position:', error)
-    }
-  }
-
   return (
     <g
       transform={`translate(${node.x || 0},${node.y || 0})`}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
-      style={{ cursor: 'grab' }}
+      className="node-group"
     >
       {/* Node circle */}
       <circle
         r={20}
-        fill={isSelected ? '#3b82f6' : '#e2e8f0'}
-        stroke={isSelected ? '#1e40af' : '#64748b'}
-        strokeWidth={2}
+        className={`node-circle ${isSelected ? 'selected' : ''}`}
       />
 
       {/* Node label */}
       <text
         y={-28}
         textAnchor="middle"
-        fontSize={14}
-        fontWeight={isSelected ? 'bold' : 'normal'}
-        fill="#1e293b"
+        className={`node-label ${isSelected ? 'selected' : ''}`}
         pointerEvents="none"
       >
         {node.label}
       </text>
 
-      {/* Optional: URL indicator */}
+      {/* Optional: URL indicator - minimal dot */}
       {node.url && (
         <circle
-          cx={12}
-          cy={-12}
-          r={4}
-          fill="#10b981"
-          stroke="white"
-          strokeWidth={1}
+          cx={15}
+          cy={-15}
+          r={3}
+          className="node-url-indicator"
         />
       )}
     </g>
