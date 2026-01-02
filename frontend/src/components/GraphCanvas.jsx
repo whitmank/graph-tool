@@ -19,7 +19,7 @@ export default function GraphCanvas() {
   const svgRef = useRef(null)
   const [, forceUpdate] = useState({})
 
-  // Canvas dimensions (responsive - will be overridden by CSS)
+  // Fixed canvas dimensions for viewBox
   const width = 1200
   const height = 800
 
@@ -71,6 +71,7 @@ export default function GraphCanvas() {
       ref={svgRef}
       className="graph-canvas"
       viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
       onClick={handleCanvasClick}
     >
       {/* Render links first (so they appear behind nodes) */}
